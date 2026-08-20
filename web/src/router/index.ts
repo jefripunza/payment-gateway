@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
+import AppLayout from '@/layouts/AppLayout.vue'
 import DashboardView from '@/views/DashboardView.vue'
 import UsersView from '@/views/UsersView.vue'
 import WalletsView from '@/views/WalletsView.vue'
@@ -10,30 +11,17 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'login', component: LoginView },
-    { path: '/app', redirect: '/app/dashboard' },
     {
-      path: '/app/dashboard',
-      name: 'dashboard',
-      component: DashboardView,
+      path: '/app',
+      component: AppLayout,
       meta: { requiresAuth: true },
-    },
-    {
-      path: '/app/users',
-      name: 'users',
-      component: UsersView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/app/wallets',
-      name: 'wallets',
-      component: WalletsView,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/app/providers',
-      name: 'providers',
-      component: ProvidersView,
-      meta: { requiresAuth: true },
+      children: [
+        { path: '', redirect: '/app/dashboard' },
+        { path: 'dashboard', name: 'dashboard', component: DashboardView },
+        { path: 'users', name: 'users', component: UsersView },
+        { path: 'wallets', name: 'wallets', component: WalletsView },
+        { path: 'providers', name: 'providers', component: ProvidersView },
+      ],
     },
   ],
 })
