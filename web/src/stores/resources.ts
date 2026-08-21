@@ -3,9 +3,9 @@ import { useQuery, useMutation, useQueryCache } from '@pinia/colada'
 import { createItem, deleteItem, fetchList, updateItem } from '@/lib/api'
 import type { Provider, User, Wallet } from '@/lib/types'
 
-const cache = useQueryCache()
-
 export const useUsersStore = defineStore('users', () => {
+  const cache = useQueryCache()
+
   const query = useQuery({
     key: ['users'],
     query: () => fetchList<User>('users', 'users'),
@@ -28,6 +28,8 @@ export const useUsersStore = defineStore('users', () => {
 })
 
 export const useWalletsStore = defineStore('wallets', () => {
+  const cache = useQueryCache()
+
   const query = useQuery({
     key: ['wallets'],
     query: () => fetchList<Wallet>('wallets', 'wallets'),
@@ -50,6 +52,8 @@ export const useWalletsStore = defineStore('wallets', () => {
 })
 
 export const useProvidersStore = defineStore('providers', () => {
+  const cache = useQueryCache()
+
   const query = useQuery({
     key: ['providers'],
     query: () => fetchList<Provider>('providers', 'providers'),
