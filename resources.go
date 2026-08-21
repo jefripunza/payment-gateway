@@ -17,7 +17,7 @@ func seedAdmin() {
 	if count > 0 {
 		return
 	}
-	email := "admin@payment.sawang.tech"
+	email := "admin@sawang.tech"
 	pw := "Admin@123"
 	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 	if err != nil {
