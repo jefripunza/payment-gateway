@@ -9,7 +9,11 @@ import (
 
 func seedAdmin() {
 	var count int64
-	DB.Model(&User{}).Count(&count)
+	if err := DB.Model(&User{}).Count(&count).Error; err != nil {
+		// Tables may not exist yet when DATABASE_MIGRATE=false on a fresh DB.
+		log.Printf("seed admin: skipped (%v) — run once with DATABASE_MIGRATE=true to create schema", err)
+		return
+	}
 	if count > 0 {
 		return
 	}

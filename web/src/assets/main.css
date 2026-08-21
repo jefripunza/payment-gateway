@@ -1,1 +1,177 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+
+/* ===== Dub-style design tokens (styles.refero.design — frosted link dashboard on rice paper) ===== */
+@theme {
+  /* surfaces */
+  --color-canvas-white: #ffffff;
+  --color-paper-mist: #f5f5f5;
+  --color-ash: #e5e5e5;
+  --color-smoke: #d4d4d4;
+  --color-pebble: #c8c8c8;
+
+  /* ink */
+  --color-midnight-ink: #0a0a0a;
+  --color-charcoal: #171717;
+  --color-graphite: #262626;
+  --color-slate: #404040;
+  --color-steel: #525252;
+  --color-fog: #737373;
+  --color-silver: #a3a3a3;
+
+  /* accent */
+  --color-electric-blue: #2563eb;
+  --color-deep-sapphire: #1e40af;
+  --color-soft-mint: #dcfce7;
+  --color-vivid-green: #16a34a;
+  --color-tangerine: #ea580c;
+  --color-lavender: #7c3aed;
+
+  /* fonts */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Satoshi', 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* base */
+html {
+  background: var(--color-canvas-white);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background: var(--color-canvas-white);
+  color: var(--color-charcoal);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* hairline borders everywhere */
+.card-surface {
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-ash);
+  border-radius: 12px;
+}
+.alt-surface {
+  background: var(--color-paper-mist);
+  border: 1px solid var(--color-ash);
+  border-radius: 12px;
+}
+
+/* inputs — flat, hairline */
+.input-surface {
+  width: 100%;
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-smoke);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--color-charcoal);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-surface::placeholder {
+  color: var(--color-fog);
+}
+.input-surface:focus {
+  border-color: var(--color-electric-blue);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.12);
+}
+
+/* buttons */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-midnight-ink);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover {
+  opacity: 0.88;
+}
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--color-graphite);
+  border: 1px solid var(--color-ash);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-ghost:hover {
+  background: var(--color-paper-mist);
+  border-color: var(--color-smoke);
+}
+
+/* pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.pill-blue {
+  background: rgb(37 99 235 / 0.08);
+  color: var(--color-electric-blue);
+  border: 1px solid rgb(37 99 235 / 0.18);
+}
+.pill-green {
+  background: rgb(22 163 74 / 0.08);
+  color: var(--color-vivid-green);
+  border: 1px solid rgb(22 163 74 / 0.18);
+}
+.pill-orange {
+  background: rgb(234 88 12 / 0.08);
+  color: var(--color-tangerine);
+  border: 1px solid rgb(234 88 12 / 0.18);
+}
+.pill-violet {
+  background: rgb(124 58 237 / 0.08);
+  color: var(--color-lavender);
+  border: 1px solid rgb(124 58 237 / 0.18);
+}
+
+/* tables */
+.table-surface {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table-surface th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-fog);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-ash);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.table-surface td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-ash);
+  color: var(--color-charcoal);
+}
+.table-surface tr:hover td {
+  background: var(--color-paper-mist);
+}
+
+/* headings */
+.display-heading {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--color-midnight-ink);
+}

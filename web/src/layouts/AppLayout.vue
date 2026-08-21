@@ -31,12 +31,7 @@ watch(
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-950 font-sans text-slate-100 antialiased">
-    <div class="pointer-events-none fixed inset-0">
-      <div class="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-indigo-600/10 blur-[120px]" />
-      <div class="absolute right-0 bottom-0 h-96 w-96 rounded-full bg-violet-600/10 blur-[120px]" />
-    </div>
-
+  <div class="min-h-screen bg-canvas-white font-sans text-charcoal antialiased">
     <AppSidebar v-model:open="drawerOpen" />
 
     <div class="relative lg:pl-64">
@@ -48,7 +43,7 @@ watch(
         <template #actions>
           <button
             type="button"
-            class="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-slate-100"
+            class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-ash bg-canvas-white px-3 text-xs font-medium text-graphite transition hover:bg-paper-mist"
             @click="passwordOpen = true"
           >
             <KeyRound class="size-3.5" />

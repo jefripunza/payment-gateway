@@ -66,7 +66,3 @@ func fillID(id *string) error {
 	}
 	return nil
 }
-
-func migrate() error {
-	return DB.AutoMigrate(&User{}, &Wallet{}, &Provider{})
-}

@@ -57,3 +57,22 @@ export async function fetchMe(): Promise<AuthUser> {
 export async function changePassword(oldPassword: string, newPassword: string) {
   return api.patch('auth/password', { json: { oldPassword, newPassword } }).json<{ ok: boolean }>()
 }
+
+// ---------- typed resource helpers ----------
+
+export async function fetchList<T>(path: string, key: string): Promise<T[]> {
+  const res = await api.get(path).json<Record<string, T[]>>()
+  return res[key] ?? []
+}
+
+export async function createItem<T>(path: string, body: unknown): Promise<T> {
+  return api.post(path, { json: body }).json<T>()
+}
+
+export async function updateItem<T>(path: string, body: unknown): Promise<T> {
+  return api.patch(path, { json: body }).json<T>()
+}
+
+export async function deleteItem(path: string): Promise<void> {
+  await api.delete(path)
+}
