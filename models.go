@@ -34,6 +34,7 @@ type Provider struct {
 	ID           string    `gorm:"primaryKey" json:"id"`
 	Name         string    `gorm:"size:120;not null" json:"name"`
 	Type         string    `gorm:"size:40;not null;default:midtrans" json:"type"`
+	Methods      string    `gorm:"type:text;not null;default:'[]'" json:"methods"` // JSON array of payment methods
 	IsProduction bool      `gorm:"not null;default:false" json:"isProduction"`
 	ApiKey       string    `gorm:"size:500;not null;default:''" json:"-"`
 	ApiSecret    string    `gorm:"size:500;not null;default:''" json:"-"`

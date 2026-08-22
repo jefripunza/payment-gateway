@@ -1,7 +1,16 @@
 import { defineStore } from 'pinia'
 import { useQuery, useMutation, useQueryCache } from '@pinia/colada'
-import { createItem, deleteItem, fetchList, updateItem } from '@/lib/api'
+import { createItem, deleteItem, fetchMethods, fetchList, updateItem } from '@/lib/api'
 import type { Provider, User, Wallet } from '@/lib/types'
+
+// Payment-method catalog (from the go-payment-method library) for the FE dropdown.
+export const useMethodsStore = defineStore('methods', () => {
+  const query = useQuery({
+    key: ['methods'],
+    query: () => fetchMethods(),
+  })
+  return { query }
+})
 
 export const useUsersStore = defineStore('users', () => {
   const cache = useQueryCache()

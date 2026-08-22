@@ -1,5 +1,5 @@
 import ky from 'ky'
-import type { AuthUser } from './types'
+import type { AuthUser, ProviderMethod } from './types'
 
 const TOKEN_KEY = 'payment:token'
 const USER_KEY = 'payment:user'
@@ -75,4 +75,14 @@ export async function updateItem<T>(path: string, body: unknown): Promise<T> {
 
 export async function deleteItem(path: string): Promise<void> {
   await api.delete(path)
+}
+
+// ---------- provider methods catalog ----------
+
+export interface MethodsCatalog {
+  providers: Record<string, ProviderMethod[]>
+}
+
+export async function fetchMethods(): Promise<MethodsCatalog> {
+  return api.get('methods').json<MethodsCatalog>()
 }

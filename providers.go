@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -21,19 +22,53 @@ func maskSecret(s string) string {
 
 // publicProvider builds the safe JSON shape — credentials never leave the server.
 func publicProvider(p *Provider) fiber.Map {
-	return fiber.Map{
-		"id":          p.ID,
-		"name":        p.Name,
-		"type":        p.Type,
-		"isProduction": p.IsProduction,
-		"merchantId":  maskSecret(p.MerchantID),
-		"apiKey":      maskSecret(p.ApiKey),
-		"apiSecret":   maskSecret(p.ApiSecret),
-		"webhookKey":  maskSecret(p.WebhookKey),
-		"enabled":     p.Enabled,
-		"createdAt":   p.CreatedAt,
-		"updatedAt":   p.UpdatedAt,
+	// methods stored as JSON text,parse to []string for the client
+	var methods []string
+	if p.Methods != "" && p.Methods != "[]" {
+		_ = json.Unmarshal([]byte(p.Methods), &methods)
 	}
+	if methods == nil {
+		methods = []string{}
+	}
+	return fiber.Map{
+		"id":           p.ID,
+		"name":         p.Name,
+		"type":         p.Type,
+		"methods":      methods,
+		"isProduction": p.IsProduction,
+		"merchantId":   maskSecret(p.MerchantID),
+		"apiKey":       maskSecret(p.ApiKey),
+		"apiSecret":    maskSecret(p.ApiSecret),
+		"webhookKey":   maskSecret(p.WebhookKey),
+		"enabled":      p.Enabled,
+		"createdAt":    p.CreatedAt,
+		"updatedAt":    p.UpdatedAt,
+	}
+}
+
+// normalizeMethods validates the requested methods against the library list
+// for the provider type and returns a JSON string for storage.
+func normalizeMethods(t string, methods []string) (string, error) {
+	if len(methods) == 0 {
+		return "[]", nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(methods))
+	for _, m := range methods {
+		if seen[m] {
+			continue
+		}
+		if !validProviderMethod(t, m) {
+			return "", fiber.NewError(fiber.StatusBadRequest, "unsupported payment method: "+m)
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func handleListProviders(c fiber.Ctx) error {
@@ -54,14 +89,15 @@ func validateProviderType(t string) bool {
 
 func handleCreateProvider(c fiber.Ctx) error {
 	var body struct {
-		Name         string `json:"name"`
-		Type         string `json:"type"`
-		IsProduction bool   `json:"isProduction"`
-		ApiKey       string `json:"apiKey"`
-		ApiSecret    string `json:"apiSecret"`
-		MerchantID   string `json:"merchantId"`
-		WebhookKey   string `json:"webhookKey"`
-		Enabled      *bool  `json:"enabled"`
+		Name         string   `json:"name"`
+		Type         string   `json:"type"`
+		Methods      []string `json:"methods"`
+		IsProduction bool     `json:"isProduction"`
+		ApiKey       string   `json:"apiKey"`
+		ApiSecret    string   `json:"apiSecret"`
+		MerchantID   string   `json:"merchantId"`
+		WebhookKey   string   `json:"webhookKey"`
+		Enabled      *bool    `json:"enabled"`
 	}
 	if err := c.Bind().Body(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
@@ -74,6 +110,10 @@ func handleCreateProvider(c fiber.Ctx) error {
 	}
 	if !validateProviderType(body.Type) {
 		return fiber.NewError(fiber.StatusBadRequest, "unsupported provider type")
+	}
+	methodsJSON, err := normalizeMethods(body.Type, body.Methods)
+	if err != nil {
+		return err
 	}
 	var cnt int64
 	DB.Model(&Provider{}).Where("name = ?", body.Name).Count(&cnt)
@@ -103,6 +143,7 @@ func handleCreateProvider(c fiber.Ctx) error {
 	p := Provider{
 		Name:         body.Name,
 		Type:         body.Type,
+		Methods:      methodsJSON,
 		IsProduction: body.IsProduction,
 		ApiKey:       ak,
 		ApiSecret:    as,
@@ -122,14 +163,15 @@ func handleUpdateProvider(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "provider not found")
 	}
 	var body struct {
-		Name         *string `json:"name"`
-		Type         *string `json:"type"`
-		IsProduction *bool   `json:"isProduction"`
-		ApiKey       *string `json:"apiKey"`
-		ApiSecret    *string `json:"apiSecret"`
-		MerchantID   *string `json:"merchantId"`
-		WebhookKey   *string `json:"webhookKey"`
-		Enabled      *bool   `json:"enabled"`
+		Name         *string  `json:"name"`
+		Type         *string  `json:"type"`
+		Methods      []string `json:"methods"`
+		IsProduction *bool    `json:"isProduction"`
+		ApiKey       *string  `json:"apiKey"`
+		ApiSecret    *string  `json:"apiSecret"`
+		MerchantID   *string  `json:"merchantId"`
+		WebhookKey   *string  `json:"webhookKey"`
+		Enabled      *bool    `json:"enabled"`
 	}
 	if err := c.Bind().Body(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
@@ -150,6 +192,14 @@ func handleUpdateProvider(c fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, "unsupported provider type")
 		}
 		p.Type = *body.Type
+	}
+	// methods: if a non-nil slice was supplied, re-validate against current type
+	if body.Methods != nil {
+		mj, err := normalizeMethods(p.Type, body.Methods)
+		if err != nil {
+			return err
+		}
+		p.Methods = mj
 	}
 	if body.IsProduction != nil {
 		p.IsProduction = *body.IsProduction

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   CreditCard,
   Eye,
@@ -9,14 +9,16 @@ import {
   Plus,
   ShieldCheck,
   Trash2,
+  X,
 } from 'lucide-vue-next'
-import type { Provider } from '@/lib/types'
+import type { Provider, ProviderMethod } from '@/lib/types'
 import ConfirmDeleteDialog from '@/components/ConfirmDeleteDialog.vue'
-import { useProvidersStore } from '@/stores/resources'
+import { useMethodsStore, useProvidersStore } from '@/stores/resources'
 
 const PROVIDER_TYPES = ['midtrans', 'xendit', 'tripay', 'duitku', 'paypal', 'stripe', 'other'] as const
 
 const store = useProvidersStore()
+const methodsStore = useMethodsStore()
 
 const providers = computed(() => store.query.data ?? [])
 const loading = computed(() => store.query.isLoading)
@@ -24,9 +26,20 @@ const error = computed(() => store.query.error?.message ?? '')
 
 const dialogOpen = ref(false)
 const editingId = ref<string | null>(null)
-const form = ref({
+const form = ref<{
+  name: string
+  type: string
+  methods: string[]
+  isProduction: boolean
+  merchantId: string
+  apiKey: string
+  apiSecret: string
+  webhookKey: string
+  enabled: boolean
+}>({
   name: '',
   type: 'midtrans',
+  methods: [],
   isProduction: false,
   merchantId: '',
   apiKey: '',
@@ -45,11 +58,18 @@ const deleting = ref(false)
 // masked value visibility
 const reveal = ref<Record<string, boolean>>({})
 
+// methods available for the currently selected type
+const availableMethods = computed<ProviderMethod[]>(() => {
+  const cat = methodsStore.query.data?.providers ?? {}
+  return cat[form.value.type] ?? []
+})
+
 function openCreate() {
   editingId.value = null
   form.value = {
     name: '',
     type: 'midtrans',
+    methods: [],
     isProduction: false,
     merchantId: '',
     apiKey: '',
@@ -66,6 +86,7 @@ function openEdit(p: Provider) {
   form.value = {
     name: p.name,
     type: p.type,
+    methods: Array.isArray(p.methods) ? [...p.methods] : [],
     isProduction: p.isProduction,
     merchantId: p.merchantId ?? '',
     apiKey: p.apiKey ?? '',
@@ -76,6 +97,27 @@ function openEdit(p: Provider) {
   formError.value = ''
   dialogOpen.value = true
 }
+
+function toggleMethod(m: string) {
+  const idx = form.value.methods.indexOf(m)
+  if (idx >= 0) {
+    form.value.methods.splice(idx, 1)
+  } else {
+    form.value.methods.push(m)
+  }
+}
+
+function isMethodSelected(m: string) {
+  return form.value.methods.includes(m)
+}
+
+// reset selected methods when provider type changes
+watch(
+  () => form.value.type,
+  () => {
+    form.value.methods = []
+  },
+)
 
 async function submit() {
   formError.value = ''
@@ -186,6 +228,7 @@ function formatDate(s: string) {
           <tr>
             <th>Name</th>
             <th>Type</th>
+            <th>Methods</th>
             <th>Credentials</th>
             <th>Environment</th>
             <th>Status</th>
@@ -203,6 +246,12 @@ function formatDate(s: string) {
               </div>
             </td>
             <td><span class="pill pill-blue">{{ p.type }}</span></td>
+            <td>
+              <div v-if="p.methods?.length" class="flex max-w-[220px] flex-wrap gap-1">
+                <span v-for="m in p.methods" :key="m" class="pill pill-ash">{{ m }}</span>
+              </div>
+              <span v-else class="text-xs text-fog">—</span>
+            </td>
             <td>
               <div class="flex items-center gap-2">
                 <span class="font-mono text-xs text-fog">{{ mask(p.apiKey) }}</span>
@@ -261,6 +310,9 @@ function formatDate(s: string) {
             <Trash2 class="size-4" />
           </button>
         </div>
+        <div v-if="p.methods?.length" class="mt-3 flex flex-wrap gap-1">
+          <span v-for="m in p.methods" :key="m" class="pill pill-ash">{{ m }}</span>
+        </div>
         <div class="mt-3 flex items-center justify-between border-t border-ash pt-3">
           <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="p.enabled ? 'text-vivid-green' : 'text-silver'">
             <span class="size-1.5 rounded-full" :class="p.enabled ? 'bg-vivid-green' : 'bg-silver'" />
@@ -300,6 +352,38 @@ function formatDate(s: string) {
               </select>
             </div>
           </div>
+
+          <!-- payment methods (from go-payment-method library) -->
+          <div>
+            <label class="mb-1.5 block text-xs font-semibold text-graphite">Payment Methods</label>
+            <div v-if="availableMethods.length" class="grid max-h-44 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-ash p-2">
+              <label
+                v-for="m in availableMethods"
+                :key="m.value"
+                class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-graphite transition hover:bg-paper-mist"
+              >
+                <input
+                  type="checkbox"
+                  class="size-4 rounded border-smoke text-electric-blue focus:ring-electric-blue/30"
+                  :checked="isMethodSelected(m.value)"
+                  @change="toggleMethod(m.value)"
+                />
+                <span class="truncate">{{ m.label }}</span>
+              </label>
+            </div>
+            <div v-else class="rounded-lg border border-dashed border-ash px-3 py-2 text-xs text-fog">
+              No method list available for {{ form.type }}.
+            </div>
+            <div v-if="form.methods.length" class="mt-2 flex flex-wrap gap-1">
+              <span v-for="m in form.methods" :key="m" class="pill pill-blue">
+                {{ m }}
+                <button type="button" class="ml-1 rounded hover:text-charcoal" @click="toggleMethod(m)">
+                  <X class="size-3" />
+                </button>
+              </span>
+            </div>
+          </div>
+
           <div>
             <label class="mb-1.5 block text-xs font-semibold text-graphite">Merchant ID</label>
             <input v-model="form.merchantId" type="text" placeholder="Optional" class="input-surface" />

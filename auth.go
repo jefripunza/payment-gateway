@@ -121,6 +121,7 @@ func newApp() *fiber.App {
 	authed.Patch("/wallets/:id", handleUpdateWallet)
 	authed.Delete("/wallets/:id", handleDeleteWallet)
 
+	authed.Get("/methods", handleListMethods)
 	authed.Get("/providers", handleListProviders)
 	authed.Post("/providers", handleCreateProvider)
 	authed.Patch("/providers/:id", handleUpdateProvider)

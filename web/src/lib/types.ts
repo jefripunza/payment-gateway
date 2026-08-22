@@ -21,6 +21,7 @@ export interface Provider {
   id: string
   name: string
   type: string
+  methods: string[]
   isProduction: boolean
   merchantId: string
   apiKey: string
@@ -29,6 +30,11 @@ export interface Provider {
   enabled: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface ProviderMethod {
+  value: string
+  label: string
 }
 
 export interface AuthUser {
