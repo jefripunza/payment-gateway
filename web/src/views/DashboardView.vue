@@ -79,10 +79,10 @@ const stats = computed(() => [
         <ul v-else class="divide-y divide-ash">
           <li v-for="p in providers.query.data" :key="p.id" class="flex items-center justify-between py-2.5">
             <div class="flex items-center gap-2.5">
-              <span class="pill" :class="p.enabled ? 'pill-green' : 'pill-blue'">{{ p.type }}</span>
+              <span class="pill" :class="p.enabled ? 'pill-green' : 'pill-blue'">{{ p.provider }}</span>
               <span class="text-sm font-medium text-charcoal">{{ p.name }}</span>
             </div>
-            <span class="text-[11px] text-silver">{{ p.isProduction ? 'Production' : 'Sandbox' }}</span>
+            <span class="text-[11px] text-silver">{{ p.label }}</span>
           </li>
         </ul>
       </section>

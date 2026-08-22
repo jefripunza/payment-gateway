@@ -1,21 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import {
-  CreditCard,
-  Eye,
-  EyeOff,
-  Loader2,
-  Pencil,
-  Plus,
-  ShieldCheck,
-  Trash2,
-  X,
-} from 'lucide-vue-next'
-import type { Provider, ProviderMethod } from '@/lib/types'
+import { CreditCard, Loader2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-vue-next'
+import type { CatalogMethod, Provider } from '@/lib/types'
 import ConfirmDeleteDialog from '@/components/ConfirmDeleteDialog.vue'
 import { useMethodsStore, useProvidersStore } from '@/stores/resources'
-
-const PROVIDER_TYPES = ['midtrans', 'xendit', 'tripay', 'duitku', 'paypal', 'stripe', 'other'] as const
 
 const store = useProvidersStore()
 const methodsStore = useMethodsStore()
@@ -24,59 +12,43 @@ const providers = computed(() => store.query.data ?? [])
 const loading = computed(() => store.query.isLoading)
 const error = computed(() => store.query.error?.message ?? '')
 
+// ---- form state ----
 const dialogOpen = ref(false)
 const editingId = ref<string | null>(null)
 const form = ref<{
   name: string
-  type: string
-  methods: string[]
-  isProduction: boolean
-  merchantId: string
-  apiKey: string
-  apiSecret: string
-  webhookKey: string
-  enabled: boolean
+  method: string
+  creds: Record<string, string>
 }>({
   name: '',
-  type: 'midtrans',
-  methods: [],
-  isProduction: false,
-  merchantId: '',
-  apiKey: '',
-  apiSecret: '',
-  webhookKey: '',
-  enabled: true,
+  method: '',
+  creds: {},
 })
 const saving = ref(false)
 const formError = ref('')
 
+// ---- delete state ----
 const deleteOpen = ref(false)
 const deleteTarget = ref<Provider | null>(null)
 const deleteError = ref('')
 const deleting = ref(false)
 
-// masked value visibility
-const reveal = ref<Record<string, boolean>>({})
+// ---- toggle state (switch on card) ----
+const togglingId = ref<string | null>(null)
 
-// methods available for the currently selected type
-const availableMethods = computed<ProviderMethod[]>(() => {
-  const cat = methodsStore.query.data?.providers ?? {}
-  return cat[form.value.type] ?? []
-})
+// ---- methods catalog ----
+const catalog = computed<CatalogMethod[]>(() => methodsStore.query.data?.methods ?? [])
+const methodsLoading = computed(() => methodsStore.query.isLoading)
+
+// current method fields (dynamic) for the selected method
+const selectedMethod = computed<CatalogMethod | undefined>(() =>
+  catalog.value.find((m) => `${m.provider}|${m.value}` === form.value.method),
+)
+const methodFields = computed(() => selectedMethod.value?.fields ?? [])
 
 function openCreate() {
   editingId.value = null
-  form.value = {
-    name: '',
-    type: 'midtrans',
-    methods: [],
-    isProduction: false,
-    merchantId: '',
-    apiKey: '',
-    apiSecret: '',
-    webhookKey: '',
-    enabled: true,
-  }
+  form.value = { name: '', method: '', creds: {} }
   formError.value = ''
   dialogOpen.value = true
 }
@@ -85,62 +57,65 @@ function openEdit(p: Provider) {
   editingId.value = p.id
   form.value = {
     name: p.name,
-    type: p.type,
-    methods: Array.isArray(p.methods) ? [...p.methods] : [],
-    isProduction: p.isProduction,
-    merchantId: p.merchantId ?? '',
-    apiKey: p.apiKey ?? '',
-    apiSecret: p.apiSecret ?? '',
-    webhookKey: p.webhookKey ?? '',
-    enabled: p.enabled,
+    method: p.method,
+    creds: { ...p.creds },
   }
   formError.value = ''
   dialogOpen.value = true
 }
 
-function toggleMethod(m: string) {
-  const idx = form.value.methods.indexOf(m)
-  if (idx >= 0) {
-    form.value.methods.splice(idx, 1)
-  } else {
-    form.value.methods.push(m)
-  }
-}
-
-function isMethodSelected(m: string) {
-  return form.value.methods.includes(m)
-}
-
-// reset selected methods when provider type changes
+// when method changes, reset creds (fields differ per method)
 watch(
-  () => form.value.type,
+  () => form.value.method,
   () => {
-    form.value.methods = []
+    form.value.creds = {}
   },
 )
 
 async function submit() {
   formError.value = ''
-  if (!form.value.name) {
+  if (!form.value.name.trim()) {
     formError.value = 'Name is required'
     return
   }
-  if (!editingId.value && !form.value.apiKey && !form.value.apiSecret) {
-    formError.value = 'Add at least an API key or secret for the provider'
+  if (!form.value.method) {
+    formError.value = 'Pick a payment method'
+    return
+  }
+  // required credential fields must be filled on create
+  const missing = methodFields.value.filter((f) => f.required && !form.value.creds[f.key]?.trim())
+  if (!editingId.value && missing.length) {
+    formError.value = `Required fields: ${missing.map((f) => f.label).join(', ')}`
     return
   }
   saving.value = true
   try {
+    const payload = {
+      name: form.value.name.trim(),
+      method: form.value.method,
+      creds: form.value.creds,
+    }
     if (editingId.value) {
-      await store.update.mutate({ id: editingId.value, ...form.value })
+      await store.update.mutate({ id: editingId.value, ...payload })
     } else {
-      await store.create.mutate({ ...form.value })
+      await store.create.mutate(payload)
     }
     dialogOpen.value = false
   } catch (e: any) {
     formError.value = e?.message ?? 'Failed to save provider'
   } finally {
     saving.value = false
+  }
+}
+
+async function toggleEnabled(p: Provider) {
+  togglingId.value = p.id
+  try {
+    await store.update.mutate({ id: p.id, enabled: !p.enabled })
+  } catch (e: any) {
+    console.error('toggle failed', e)
+  } finally {
+    togglingId.value = null
   }
 }
 
@@ -163,20 +138,6 @@ async function confirmDelete() {
   } finally {
     deleting.value = false
   }
-}
-
-function mask(v: string) {
-  if (!v) return '—'
-  if (v.length <= 8) return '••••'
-  return `${v.slice(0, 4)}••••••${v.slice(-4)}`
-}
-
-function toggleReveal(id: string) {
-  reveal.value[id] = !reveal.value[id]
-}
-
-function isRevealed(id: string) {
-  return !!reveal.value[id]
 }
 
 function formatDate(s: string) {
@@ -221,106 +182,55 @@ function formatDate(s: string) {
       </button>
     </div>
 
-    <!-- desktop table -->
-    <div v-else-if="!error && providers.length" class="card-surface hidden overflow-hidden md:block">
-      <table class="table-surface">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Methods</th>
-            <th>Credentials</th>
-            <th>Environment</th>
-            <th>Status</th>
-            <th class="text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in providers" :key="p.id">
-            <td>
-              <div class="flex items-center gap-3">
-                <div class="flex size-8 items-center justify-center rounded-lg bg-electric-blue/10">
-                  <CreditCard class="size-4 text-electric-blue" />
-                </div>
-                <span class="font-medium text-charcoal">{{ p.name }}</span>
-              </div>
-            </td>
-            <td><span class="pill pill-blue">{{ p.type }}</span></td>
-            <td>
-              <div v-if="p.methods?.length" class="flex max-w-[220px] flex-wrap gap-1">
-                <span v-for="m in p.methods" :key="m" class="pill pill-ash">{{ m }}</span>
-              </div>
-              <span v-else class="text-xs text-fog">—</span>
-            </td>
-            <td>
-              <div class="flex items-center gap-2">
-                <span class="font-mono text-xs text-fog">{{ mask(p.apiKey) }}</span>
-                <button
-                  type="button"
-                  class="rounded p-1 text-silver transition hover:text-charcoal"
-                  :title="isRevealed(p.id) ? 'Hide credential' : 'Show credential'"
-                  @click="toggleReveal(p.id)"
-                >
-                  <EyeOff v-if="isRevealed(p.id)" class="size-3.5" />
-                  <Eye v-else class="size-3.5" />
-                </button>
-              </div>
-            </td>
-            <td>
-              <span class="pill" :class="p.isProduction ? 'pill-orange' : 'pill-violet'">
-                {{ p.isProduction ? 'Production' : 'Sandbox' }}
-              </span>
-            </td>
-            <td>
-              <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="p.enabled ? 'text-vivid-green' : 'text-silver'">
-                <span class="size-1.5 rounded-full" :class="p.enabled ? 'bg-vivid-green' : 'bg-silver'" />
-                {{ p.enabled ? 'Enabled' : 'Disabled' }}
-              </span>
-            </td>
-            <td>
-              <div class="flex justify-end gap-1">
-                <button type="button" title="Edit" class="rounded-lg p-2 text-fog transition hover:bg-paper-mist hover:text-charcoal" @click="openEdit(p)">
-                  <Pencil class="size-4" />
-                </button>
-                <button type="button" title="Delete" class="rounded-lg p-2 text-fog transition hover:bg-tangerine/10 hover:text-tangerine" @click="requestDelete(p)">
-                  <Trash2 class="size-4" />
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- provider cards -->
+    <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div v-for="p in providers" :key="p.id" class="card-surface flex flex-col p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="flex size-10 items-center justify-center rounded-xl bg-electric-blue/10">
+              <CreditCard class="size-5 text-electric-blue" />
+            </div>
+            <div class="min-w-0">
+              <div class="truncate font-medium text-charcoal">{{ p.name }}</div>
+              <div class="text-xs text-fog">{{ p.provider }} · {{ p.label }}</div>
+            </div>
+          </div>
+          <!-- enable/disable switch -->
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="p.enabled"
+            :title="p.enabled ? 'Disable provider' : 'Enable provider'"
+            class="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50"
+            :class="p.enabled ? 'bg-electric-blue' : 'bg-ash'"
+            :disabled="togglingId === p.id"
+            @click="toggleEnabled(p)"
+          >
+            <span
+              class="absolute top-0.5 size-5 rounded-full bg-white shadow transition-all"
+              :class="p.enabled ? 'left-[22px]' : 'left-0.5'"
+            />
+          </button>
+        </div>
 
-    <!-- mobile cards -->
-    <div v-else class="space-y-3">
-      <div v-for="p in providers" :key="p.id" class="card-surface p-4">
-        <div class="flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-xl bg-electric-blue/10">
-            <CreditCard class="size-5 text-electric-blue" />
+        <div class="mt-4 space-y-1.5 border-t border-ash pt-3">
+          <div v-for="(v, k) in p.creds" :key="k" class="flex items-center justify-between text-xs">
+            <span class="capitalize text-fog">{{ k.replace(/([A-Z])/g, ' $1') }}</span>
+            <span class="font-mono text-graphite">{{ v }}</span>
           </div>
-          <div class="min-w-0 flex-1">
-            <div class="truncate font-medium text-charcoal">{{ p.name }}</div>
-            <div class="text-xs text-fog">{{ p.type }}</div>
+          <div v-if="!Object.keys(p.creds ?? {}).length" class="text-xs text-fog">No credentials</div>
+        </div>
+
+        <div class="mt-auto flex items-center justify-between border-t border-ash pt-3 text-xs text-fog">
+          <span>{{ formatDate(p.createdAt) }}</span>
+          <div class="flex gap-1">
+            <button type="button" title="Edit" class="rounded-lg p-2 text-fog transition hover:bg-paper-mist hover:text-charcoal" @click="openEdit(p)">
+              <Pencil class="size-4" />
+            </button>
+            <button type="button" title="Delete" class="rounded-lg p-2 text-fog transition hover:bg-tangerine/10 hover:text-tangerine" @click="requestDelete(p)">
+              <Trash2 class="size-4" />
+            </button>
           </div>
-          <button type="button" class="rounded-lg p-2 text-fog transition hover:bg-paper-mist hover:text-charcoal" @click="openEdit(p)">
-            <Pencil class="size-4" />
-          </button>
-          <button type="button" class="rounded-lg p-2 text-fog transition hover:bg-tangerine/10 hover:text-tangerine" @click="requestDelete(p)">
-            <Trash2 class="size-4" />
-          </button>
-        </div>
-        <div v-if="p.methods?.length" class="mt-3 flex flex-wrap gap-1">
-          <span v-for="m in p.methods" :key="m" class="pill pill-ash">{{ m }}</span>
-        </div>
-        <div class="mt-3 flex items-center justify-between border-t border-ash pt-3">
-          <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="p.enabled ? 'text-vivid-green' : 'text-silver'">
-            <span class="size-1.5 rounded-full" :class="p.enabled ? 'bg-vivid-green' : 'bg-silver'" />
-            {{ p.enabled ? 'Enabled' : 'Disabled' }}
-          </span>
-          <span class="pill" :class="p.isProduction ? 'pill-orange' : 'pill-violet'">
-            {{ p.isProduction ? 'Production' : 'Sandbox' }}
-          </span>
         </div>
       </div>
     </div>
@@ -335,75 +245,45 @@ function formatDate(s: string) {
         <form class="mt-5 space-y-4" @submit.prevent="submit">
           <div>
             <label class="mb-1.5 block text-xs font-semibold text-graphite">Name</label>
-            <input v-model="form.name" type="text" required placeholder="e.g. Midtrans Production" class="input-surface" />
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="mb-1.5 block text-xs font-semibold text-graphite">Type</label>
-              <select v-model="form.type" class="input-surface">
-                <option v-for="t in PROVIDER_TYPES" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </div>
-            <div>
-              <label class="mb-1.5 block text-xs font-semibold text-graphite">Environment</label>
-              <select v-model="form.isProduction" class="input-surface">
-                <option :value="false">Sandbox</option>
-                <option :value="true">Production</option>
-              </select>
-            </div>
+            <input v-model="form.name" type="text" required placeholder="e.g. Midtrans QRIS Production" class="input-surface" />
           </div>
 
-          <!-- payment methods (from go-payment-method library) -->
+          <!-- method dropdown (from go-payment-method catalog) -->
           <div>
-            <label class="mb-1.5 block text-xs font-semibold text-graphite">Payment Methods</label>
-            <div v-if="availableMethods.length" class="grid max-h-44 grid-cols-2 gap-1 overflow-y-auto rounded-lg border border-ash p-2">
-              <label
-                v-for="m in availableMethods"
-                :key="m.value"
-                class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-graphite transition hover:bg-paper-mist"
-              >
+            <label class="mb-1.5 block text-xs font-semibold text-graphite">Method</label>
+            <div v-if="methodsLoading" class="flex items-center gap-2 py-2 text-xs text-fog">
+              <Loader2 class="size-3.5 animate-spin" /> Loading methods…
+            </div>
+            <select v-else v-model="form.method" class="input-surface">
+              <option value="" disabled>Select a payment method…</option>
+              <optgroup v-for="g in catalog" :key="g.provider" :label="g.provider">
+                <option :value="`${g.provider}|${g.value}`">{{ g.label }}</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- dynamic credential fields per method -->
+          <div v-if="methodFields.length" class="space-y-4">
+            <template v-for="f in methodFields" :key="f.key">
+              <div>
+                <label class="mb-1.5 block text-xs font-semibold text-graphite">
+                  {{ f.label }}
+                  <span v-if="f.required" class="text-tangerine">*</span>
+                </label>
                 <input
-                  type="checkbox"
-                  class="size-4 rounded border-smoke text-electric-blue focus:ring-electric-blue/30"
-                  :checked="isMethodSelected(m.value)"
-                  @change="toggleMethod(m.value)"
+                  v-model="form.creds[f.key]"
+                  type="password"
+                  autocomplete="new-password"
+                  :placeholder="editingId ? (f.required ? 'Leave blank to keep current' : 'Leave blank to keep current') : (f.placeholder ?? '')"
+                  class="input-surface"
                 />
-                <span class="truncate">{{ m.label }}</span>
-              </label>
-            </div>
-            <div v-else class="rounded-lg border border-dashed border-ash px-3 py-2 text-xs text-fog">
-              No method list available for {{ form.type }}.
-            </div>
-            <div v-if="form.methods.length" class="mt-2 flex flex-wrap gap-1">
-              <span v-for="m in form.methods" :key="m" class="pill pill-blue">
-                {{ m }}
-                <button type="button" class="ml-1 rounded hover:text-charcoal" @click="toggleMethod(m)">
-                  <X class="size-3" />
-                </button>
-              </span>
-            </div>
+              </div>
+            </template>
+          </div>
+          <div v-else-if="form.method" class="rounded-lg border border-dashed border-ash px-3 py-2 text-xs text-fog">
+            No credential fields for this method.
           </div>
 
-          <div>
-            <label class="mb-1.5 block text-xs font-semibold text-graphite">Merchant ID</label>
-            <input v-model="form.merchantId" type="text" placeholder="Optional" class="input-surface" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs font-semibold text-graphite">API Key</label>
-            <input v-model="form.apiKey" type="text" :placeholder="editingId ? 'Leave blank to keep current' : 'Server key / API key'" class="input-surface" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs font-semibold text-graphite">API Secret</label>
-            <input v-model="form.apiSecret" type="text" :placeholder="editingId ? 'Leave blank to keep current' : 'Secret key / client secret'" class="input-surface" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs font-semibold text-graphite">Webhook Key</label>
-            <input v-model="form.webhookKey" type="text" :placeholder="editingId ? 'Leave blank to keep current' : 'Optional' " class="input-surface" />
-          </div>
-          <div class="flex items-center gap-2">
-            <input v-model="form.enabled" type="checkbox" id="provider-enabled" class="size-4 rounded border-smoke text-electric-blue focus:ring-electric-blue/30" />
-            <label for="provider-enabled" class="text-sm text-graphite">Enabled</label>
-          </div>
           <div v-if="formError" class="rounded-lg border border-tangerine/20 bg-tangerine/5 px-3 py-2 text-xs font-medium text-tangerine">
             {{ formError }}
           </div>

@@ -20,21 +20,27 @@ export interface Wallet {
 export interface Provider {
   id: string
   name: string
-  type: string
-  methods: string[]
-  isProduction: boolean
-  merchantId: string
-  apiKey: string
-  apiSecret: string
-  webhookKey: string
+  method: string // "provider|value"
+  provider: string
+  label: string
+  creds: Record<string, string> // masked values
   enabled: boolean
   createdAt: string
   updatedAt: string
 }
 
-export interface ProviderMethod {
+export interface MethodField {
+  key: string
+  label: string
+  required: boolean
+  placeholder?: string
+}
+
+export interface CatalogMethod {
+  provider: string
   value: string
   label: string
+  fields: MethodField[]
 }
 
 export interface AuthUser {

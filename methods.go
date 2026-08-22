@@ -12,6 +12,60 @@ type ProviderMethod struct {
 	Label string `json:"label"` // human-friendly name shown in the dropdown
 }
 
+// MethodField describes one dynamic credential input for a provider method.
+type MethodField struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Required    bool   `json:"required"`
+	Placeholder string `json:"placeholder,omitempty"`
+}
+
+// CatalogMethod is one selectable entry in the FE methods dropdown.
+// Value is the raw library constant (e.g. "QRIS", "CREDIT_CARD");
+// Provider tells the backend which gateway it belongs to.
+type CatalogMethod struct {
+	Provider string       `json:"provider"`
+	Value    string       `json:"value"`
+	Label    string       `json:"label"`
+	Fields   []MethodField `json:"fields"`
+}
+
+// providerMethodFields defines the dynamic credential inputs for each gateway.
+// All methods of a gateway share its credential set (that's how the
+// gateways work — one keypair powers every channel).
+var providerMethodFields = map[string][]MethodField{
+	"midtrans": {
+		{Key: "serverKey", Label: "Server Key", Required: true, Placeholder: "Midtrans server key"},
+		{Key: "clientKey", Label: "Client Key", Required: true, Placeholder: "Midtrans client key"},
+		{Key: "merchantId", Label: "Merchant ID", Required: false, Placeholder: "Optional"},
+	},
+	"xendit": {
+		{Key: "secretKey", Label: "Secret Key (x-api-key)", Required: true, Placeholder: "Xendit API key"},
+		{Key: "publishableKey", Label: "Publishable Key", Required: false, Placeholder: "Optional"},
+	},
+	"tripay": {
+		{Key: "apiKey", Label: "API Key", Required: true, Placeholder: "TriPay API key"},
+		{Key: "privateKey", Label: "Private Key", Required: true, Placeholder: "TriPay private key"},
+		{Key: "merchantCode", Label: "Merchant Code", Required: true, Placeholder: "TriPay merchant code"},
+	},
+	"duitku": {
+		{Key: "merchantCode", Label: "Merchant Code", Required: true, Placeholder: "Duitku merchant code"},
+		{Key: "apiKey", Label: "API Key", Required: true, Placeholder: "Duitku API key"},
+	},
+	"stripe": {
+		{Key: "secretKey", Label: "Secret Key", Required: true, Placeholder: "sk_live_..."},
+		{Key: "publishableKey", Label: "Publishable Key", Required: false, Placeholder: "pk_live_... (optional)"},
+	},
+	"paypal": {
+		{Key: "clientId", Label: "Client ID", Required: true, Placeholder: "PayPal client ID"},
+		{Key: "clientSecret", Label: "Client Secret", Required: true, Placeholder: "PayPal client secret"},
+	},
+	"other": {
+		{Key: "apiKey", Label: "API Key", Required: true, Placeholder: "API key"},
+		{Key: "apiSecret", Label: "API Secret", Required: false, Placeholder: "Optional"},
+	},
+}
+
 // providerMethods is the single source of truth for the FE dropdown.
 // Xendit & Tripay lists come straight from the library constants
 // (xendit.PaymentMethod*, tripay.Channel*). Midtrans/Stripe/Duitku have no
@@ -121,21 +175,48 @@ var providerMethods = map[string][]ProviderMethod{
 	"other": {},
 }
 
-func handleListMethods(c fiber.Ctx) error {
-	// return a map: provider type -> list of methods (for the FE dropdown)
-	out := make(fiber.Map, len(providerMethods))
-	for provider, methods := range providerMethods {
-		out[provider] = methods
-	}
-	return c.JSON(fiber.Map{"providers": out})
-}
-
-// validProviderMethod reports whether m is a known method for provider type t.
-func validProviderMethod(t, m string) bool {
-	for _, pm := range providerMethods[t] {
-		if pm.Value == m {
-			return true
+// providerMethodLabel returns the display label for a provider+method pair.
+func providerMethodLabel(provider, value string) string {
+	for _, m := range providerMethods[provider] {
+		if m.Value == value {
+			return m.Label
 		}
 	}
-	return false
+	return value
+}
+
+// resolveMethod parses "provider|value" into its parts and validates it.
+func resolveMethod(s string) (provider string, value string, ok bool) {
+	for p := range providerMethods {
+		for _, m := range providerMethods[p] {
+			if s == p+"|"+m.Value {
+				return p, m.Value, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// fieldsFor returns the dynamic credential field definitions for a provider.
+func fieldsFor(provider string) []MethodField {
+	if f, ok := providerMethodFields[provider]; ok {
+		return f
+	}
+	return []MethodField{}
+}
+
+func handleListMethods(c fiber.Ctx) error {
+	out := make([]CatalogMethod, 0)
+	for provider, methods := range providerMethods {
+		fields := fieldsFor(provider)
+		for _, m := range methods {
+			out = append(out, CatalogMethod{
+				Provider: provider,
+				Value:    m.Value,
+				Label:    m.Label,
+				Fields:   fields,
+			})
+		}
+	}
+	return c.JSON(fiber.Map{"methods": out})
 }

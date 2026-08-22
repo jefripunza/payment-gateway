@@ -1,5 +1,5 @@
 import ky from 'ky'
-import type { AuthUser, ProviderMethod } from './types'
+import type { AuthUser, CatalogMethod } from './types'
 
 const TOKEN_KEY = 'payment:token'
 const USER_KEY = 'payment:user'
@@ -80,7 +80,7 @@ export async function deleteItem(path: string): Promise<void> {
 // ---------- provider methods catalog ----------
 
 export interface MethodsCatalog {
-  providers: Record<string, ProviderMethod[]>
+  methods: CatalogMethod[]
 }
 
 export async function fetchMethods(): Promise<MethodsCatalog> {

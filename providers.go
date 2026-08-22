@@ -7,11 +7,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-var validProviderTypes = map[string]bool{
-	"midtrans": true, "xendit": true, "tripay": true, "duitku": true,
-	"paypal": true, "stripe": true, "other": true,
-}
-
 // maskSecret shows only the first 6 and last 4 characters for display.
 func maskSecret(s string) string {
 	if len(s) <= 12 {
@@ -21,54 +16,37 @@ func maskSecret(s string) string {
 }
 
 // publicProvider builds the safe JSON shape — credentials never leave the server.
+// Returns the method label + a masked map of the credential fields (non-empty only).
 func publicProvider(p *Provider) fiber.Map {
-	// methods stored as JSON text,parse to []string for the client
-	var methods []string
-	if p.Methods != "" && p.Methods != "[]" {
-		_ = json.Unmarshal([]byte(p.Methods), &methods)
-	}
-	if methods == nil {
-		methods = []string{}
-	}
-	return fiber.Map{
-		"id":           p.ID,
-		"name":         p.Name,
-		"type":         p.Type,
-		"methods":      methods,
-		"isProduction": p.IsProduction,
-		"merchantId":   maskSecret(p.MerchantID),
-		"apiKey":       maskSecret(p.ApiKey),
-		"apiSecret":    maskSecret(p.ApiSecret),
-		"webhookKey":   maskSecret(p.WebhookKey),
-		"enabled":      p.Enabled,
-		"createdAt":    p.CreatedAt,
-		"updatedAt":    p.UpdatedAt,
-	}
-}
+	provider, value, _ := resolveMethod(p.Method)
+	label := providerMethodLabel(provider, value)
 
-// normalizeMethods validates the requested methods against the library list
-// for the provider type and returns a JSON string for storage.
-func normalizeMethods(t string, methods []string) (string, error) {
-	if len(methods) == 0 {
-		return "[]", nil
-	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(methods))
-	for _, m := range methods {
-		if seen[m] {
+	// parse encrypted creds -> map; decrypt each non-empty value, then mask.
+	creds := map[string]string{}
+	_ = json.Unmarshal([]byte(p.Creds), &creds)
+	masked := fiber.Map{}
+	for k, v := range creds {
+		if v == "" {
 			continue
 		}
-		if !validProviderMethod(t, m) {
-			return "", fiber.NewError(fiber.StatusBadRequest, "unsupported payment method: "+m)
+		if plain, err := decryptSecret(v); err == nil && plain != "" {
+			masked[k] = maskSecret(plain)
+		} else {
+			masked[k] = maskSecret(v)
 		}
-		seen[m] = true
-		out = append(out, m)
 	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return "", err
+
+	return fiber.Map{
+		"id":        p.ID,
+		"name":      p.Name,
+		"method":    p.Method,
+		"provider":  provider,
+		"label":     label,
+		"creds":     masked,
+		"enabled":   p.Enabled,
+		"createdAt": p.CreatedAt,
+		"updatedAt": p.UpdatedAt,
 	}
-	return string(b), nil
 }
 
 func handleListProviders(c fiber.Ctx) error {
@@ -83,38 +61,24 @@ func handleListProviders(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"providers": out})
 }
 
-func validateProviderType(t string) bool {
-	return validProviderTypes[t]
-}
-
 func handleCreateProvider(c fiber.Ctx) error {
 	var body struct {
-		Name         string   `json:"name"`
-		Type         string   `json:"type"`
-		Methods      []string `json:"methods"`
-		IsProduction bool     `json:"isProduction"`
-		ApiKey       string   `json:"apiKey"`
-		ApiSecret    string   `json:"apiSecret"`
-		MerchantID   string   `json:"merchantId"`
-		WebhookKey   string   `json:"webhookKey"`
-		Enabled      *bool    `json:"enabled"`
+		Name    string            `json:"name"`
+		Method  string            `json:"method"` // "provider|value"
+		Creds   map[string]string `json:"creds"`
+		Enabled *bool             `json:"enabled"`
 	}
 	if err := c.Bind().Body(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
-	if body.Name == "" {
+	if strings.TrimSpace(body.Name) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "name is required")
 	}
-	if body.Type == "" {
-		body.Type = "midtrans"
+	provider, _, ok := resolveMethod(body.Method)
+	if !ok {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid method, pick one from the catalog")
 	}
-	if !validateProviderType(body.Type) {
-		return fiber.NewError(fiber.StatusBadRequest, "unsupported provider type")
-	}
-	methodsJSON, err := normalizeMethods(body.Type, body.Methods)
-	if err != nil {
-		return err
-	}
+	_ = provider // provider is implicit in the method string; kept for clarity
 	var cnt int64
 	DB.Model(&Provider{}).Where("name = ?", body.Name).Count(&cnt)
 	if cnt > 0 {
@@ -124,32 +88,29 @@ func handleCreateProvider(c fiber.Ctx) error {
 	if body.Enabled != nil {
 		enabled = *body.Enabled
 	}
-	ak, err := encryptSecret(body.ApiKey)
+
+	// encrypt each credential value before storage
+	enc := map[string]string{}
+	for k, v := range body.Creds {
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		e, err := encryptSecret(v)
+		if err != nil {
+			return err
+		}
+		enc[k] = e
+	}
+	encJSON, err := json.Marshal(enc)
 	if err != nil {
 		return err
 	}
-	as, err := encryptSecret(body.ApiSecret)
-	if err != nil {
-		return err
-	}
-	mid, err := encryptSecret(body.MerchantID)
-	if err != nil {
-		return err
-	}
-	wk, err := encryptSecret(body.WebhookKey)
-	if err != nil {
-		return err
-	}
+
 	p := Provider{
-		Name:         body.Name,
-		Type:         body.Type,
-		Methods:      methodsJSON,
-		IsProduction: body.IsProduction,
-		ApiKey:       ak,
-		ApiSecret:    as,
-		MerchantID:   mid,
-		WebhookKey:   wk,
-		Enabled:      enabled,
+		Name:    strings.TrimSpace(body.Name),
+		Method:  body.Method,
+		Creds:   string(encJSON),
+		Enabled: enabled,
 	}
 	if err := DB.Create(&p).Error; err != nil {
 		return err
@@ -163,15 +124,10 @@ func handleUpdateProvider(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "provider not found")
 	}
 	var body struct {
-		Name         *string  `json:"name"`
-		Type         *string  `json:"type"`
-		Methods      []string `json:"methods"`
-		IsProduction *bool    `json:"isProduction"`
-		ApiKey       *string  `json:"apiKey"`
-		ApiSecret    *string  `json:"apiSecret"`
-		MerchantID   *string  `json:"merchantId"`
-		WebhookKey   *string  `json:"webhookKey"`
-		Enabled      *bool    `json:"enabled"`
+		Name    *string            `json:"name"`
+		Method  *string            `json:"method"`
+		Creds   map[string]string  `json:"creds"`
+		Enabled *bool              `json:"enabled"`
 	}
 	if err := c.Bind().Body(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
@@ -185,56 +141,36 @@ func handleUpdateProvider(c fiber.Ctx) error {
 		if cnt > 0 {
 			return fiber.NewError(fiber.StatusConflict, "provider with this name already exists")
 		}
-		p.Name = *body.Name
+		p.Name = strings.TrimSpace(*body.Name)
 	}
-	if body.Type != nil {
-		if !validateProviderType(*body.Type) {
-			return fiber.NewError(fiber.StatusBadRequest, "unsupported provider type")
+	if body.Method != nil {
+		if _, _, ok := resolveMethod(*body.Method); !ok {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid method, pick one from the catalog")
 		}
-		p.Type = *body.Type
-	}
-	// methods: if a non-nil slice was supplied, re-validate against current type
-	if body.Methods != nil {
-		mj, err := normalizeMethods(p.Type, body.Methods)
-		if err != nil {
-			return err
-		}
-		p.Methods = mj
-	}
-	if body.IsProduction != nil {
-		p.IsProduction = *body.IsProduction
+		p.Method = *body.Method
 	}
 	if body.Enabled != nil {
 		p.Enabled = *body.Enabled
 	}
-	// encrypt + store any credential that was provided (non-empty)
-	if body.ApiKey != nil && *body.ApiKey != "" {
-		enc, err := encryptSecret(*body.ApiKey)
+	// merge/overwrite creds: only non-empty values are updated; empty = keep existing
+	if body.Creds != nil {
+		existing := map[string]string{}
+		_ = json.Unmarshal([]byte(p.Creds), &existing)
+		for k, v := range body.Creds {
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+			e, err := encryptSecret(v)
+			if err != nil {
+				return err
+			}
+			existing[k] = e
+		}
+		encJSON, err := json.Marshal(existing)
 		if err != nil {
 			return err
 		}
-		p.ApiKey = enc
-	}
-	if body.ApiSecret != nil && *body.ApiSecret != "" {
-		enc, err := encryptSecret(*body.ApiSecret)
-		if err != nil {
-			return err
-		}
-		p.ApiSecret = enc
-	}
-	if body.MerchantID != nil && *body.MerchantID != "" {
-		enc, err := encryptSecret(*body.MerchantID)
-		if err != nil {
-			return err
-		}
-		p.MerchantID = enc
-	}
-	if body.WebhookKey != nil && *body.WebhookKey != "" {
-		enc, err := encryptSecret(*body.WebhookKey)
-		if err != nil {
-			return err
-		}
-		p.WebhookKey = enc
+		p.Creds = string(encJSON)
 	}
 	if err := DB.Save(&p).Error; err != nil {
 		return err

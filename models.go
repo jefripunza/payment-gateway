@@ -31,18 +31,13 @@ type Wallet struct {
 }
 
 type Provider struct {
-	ID           string    `gorm:"primaryKey" json:"id"`
-	Name         string    `gorm:"size:120;not null" json:"name"`
-	Type         string    `gorm:"size:40;not null;default:midtrans" json:"type"`
-	Methods      string    `gorm:"type:text;not null;default:'[]'" json:"methods"` // JSON array of payment methods
-	IsProduction bool      `gorm:"not null;default:false" json:"isProduction"`
-	ApiKey       string    `gorm:"size:500;not null;default:''" json:"-"`
-	ApiSecret    string    `gorm:"size:500;not null;default:''" json:"-"`
-	MerchantID   string    `gorm:"size:120;not null;default:''" json:"-"`
-	WebhookKey   string    `gorm:"size:500;not null;default:''" json:"-"`
-	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID        string    `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"size:120;not null" json:"name"`
+	Method    string    `gorm:"size:80;not null" json:"method"` // "provider|value" e.g. "midtrans|QRIS"
+	Creds     string    `gorm:"type:text;not null;default:'{}'" json:"-"` // encrypted JSON map of credential values
+	Enabled   bool      `gorm:"not null;default:true" json:"enabled"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {
